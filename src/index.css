@@ -1,0 +1,68 @@
+
+@import "tailwindcss";
+
+:root {
+  font-family: Inter, system-ui, sans-serif;
+  color: #f8fafc;
+  background: #080f1e;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+@theme {
+  --font-sans: "Inter", system-ui, sans-serif;
+}
+
+:root {
+  --color-surface: rgba(255, 255, 255, 0.06);
+  --color-surface-hover: rgba(255, 255, 255, 0.1);
+  --color-border: rgba(255, 255, 255, 0.12);
+  --color-text-muted: #a9bbd1;
+  --color-accent: #7dd3fc;
+}
+
+body {
+  background:
+    radial-gradient(
+      ellipse at 20% 10%,
+      rgba(28, 100, 180, 0.25),
+      transparent 45%
+    ),
+    linear-gradient(135deg, #080f1e, #12213a 65%, #080f1e);
+  background-attachment: fixed;
+}
+
+.glass-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 1.5rem;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.glass-card:hover {
+  background: var(--color-surface-hover);
+  transition: background 200ms ease;
+}
