@@ -29,7 +29,6 @@ function CurrentWeather({
 
   const WeatherIcon = getWeatherIcon(weatherCode, isDay);
 
-  // Open-Meteo supplies local timestamps for the selected city.
   const localDate = localTime?.split("T")[0];
 
   const formattedDate = localDate
@@ -47,7 +46,7 @@ function CurrentWeather({
     .join(", ");
 
   return (
-    <section className="glass-card relative flex min-h-80 flex-col justify-between overflow-hidden p-6 sm:p-8">
+    <section className="glass-card relative flex h-full min-h-80 flex-col justify-between overflow-hidden p-6 sm:p-8">
       {/* Atmospheric glow */}
       <div
         aria-hidden="true"
@@ -86,7 +85,9 @@ function CurrentWeather({
             size={19}
             fill={isFavorite ? "currentColor" : "none"}
             className={
-              isFavorite ? "text-rose-400" : "text-white"
+              isFavorite
+                ? "text-rose-400"
+                : "text-white"
             }
           />
         </button>
@@ -125,14 +126,20 @@ function CurrentWeather({
       {/* Daily summary */}
       <div className="relative flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-white/10 pt-5">
         <div className="flex items-center gap-2">
-          <ArrowUp size={17} className="text-amber-300" />
+          <ArrowUp
+            size={17}
+            className="text-amber-300"
+          />
           <span className="font-medium">
             {Math.round(high)}°
           </span>
         </div>
 
         <div className="flex items-center gap-2">
-          <ArrowDown size={17} className="text-sky-300" />
+          <ArrowDown
+            size={17}
+            className="text-sky-300"
+          />
           <span className="font-medium">
             {Math.round(low)}°
           </span>
