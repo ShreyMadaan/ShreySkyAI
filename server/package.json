@@ -1,13 +1,20 @@
 {
-  "name": "server",
+  "name": "shreyskyai-server",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "ShreySkyAI backend API for weather intelligence, AI insights, and authentication",
+  "main": "src/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "node --watch src/index.js"
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
+  "keywords": [
+    "weather",
+    "ai",
+    "express",
+    "mongodb",
+    "groq"
+  ],
   "author": "",
   "license": "ISC",
   "type": "module",

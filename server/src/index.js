@@ -5,9 +5,10 @@ import express from "express";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
 import Groq from "groq-sdk";
-import { connectDB } from "./config/db.js";
+import session from "express-session";
+import MongoStore from "connect-mongo";
 
-dns.setServers(["8.8.8.8", "1.1.1.1"]);
+import { connectDB } from "./config/db.js";
 import {
   createWeatherCacheKey,
   getCachedBrief,
@@ -16,40 +17,98 @@ import {
   setPendingRequest,
   clearPendingRequest,
 } from "./utils/aiCache.js";
-import session from "express-session";
-import MongoStore from "connect-mongo";
+
 import authRoutes from "./routes/authRoutes.js";
 
+// DNS configuration
+dns.setServers(["8.8.8.8", "1.1.1.1"]);
+
 const app = express();
+
 const PORT = process.env.PORT || 5000;
 const MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-20b";
+const isProduction = process.env.NODE_ENV === "production";
 
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-});
+const SESSION_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 
-app.use(
-  cors({
-    origin: "http://localhost:5173",
-    credentials: true,
-  })
-);
+const requiredVariables = [
+  "MONGODB_URI",
+  "GROQ_API_KEY",
+  "SESSION_SECRET",
+  "GOOGLE_CLIENT_ID",
+];
 
-app.use(express.json({ limit: "20kb" }));
-if (!process.env.SESSION_SECRET) {
-  throw new Error("SESSION_SECRET is required.");
+if (isProduction) {
+  requiredVariables.push("FRONTEND_URL");
 }
 
-if (process.env.NODE_ENV === "production") {
+for (const variable of requiredVariables) {
+  if (!process.env[variable]) {
+    throw new Error(`${variable} is required.`);
+  }
+}
+
+// Allowed frontend origins
+const allowedOrigins = [
+  "http://localhost:5173",
+  process.env.FRONTEND_URL,
+]
+  .filter(Boolean)
+  .map((origin) => origin.replace(/\/+$/, ""));
+
+if (isProduction) {
   app.set("trust proxy", 1);
 }
 
+// CORS
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(null, false);
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+
+// JSON body parser
+app.use(express.json({ limit: "20kb" }));
+
+// Origin verification for state-changing requests.
+// Browsers send an Origin header on cross-origin requests.
+// Requests without Origin are allowed for non-browser clients.
+app.use((req, res, next) => {
+  const safeMethods = ["GET", "HEAD", "OPTIONS"];
+
+  if (safeMethods.includes(req.method)) {
+    return next();
+  }
+
+  const origin = req.headers.origin;
+
+  if (origin && !allowedOrigins.includes(origin)) {
+    return res.status(403).json({
+      success: false,
+      message: "Request origin is not allowed.",
+    });
+  }
+
+  next();
+});
+
+// Sessions
 app.use(
   session({
     name: "shreysky.sid",
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
+    proxy: isProduction,
     store: MongoStore.create({
       mongoUrl: process.env.MONGODB_URI,
       dbName: "shreyskyai",
@@ -58,20 +117,26 @@ app.use(
     }),
     cookie: {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
+      maxAge: SESSION_MAX_AGE,
     },
   })
 );
 
+// Authentication routes
 app.use("/api/auth", authRoutes);
 
+// AI rate limiter
 const aiLimiter = rateLimit({
   windowMs: 60 * 1000,
   limit: 10,
   standardHeaders: "draft-7",
   legacyHeaders: false,
+});
+
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY,
 });
 
 const expectedTitles = [
@@ -181,6 +246,7 @@ async function generateWeatherBrief(context) {
   };
 }
 
+// Health check
 app.get("/api/health", (req, res) => {
   res.json({
     success: true,
@@ -190,6 +256,7 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+// AI Weather Brief
 app.post(
   "/api/ai/weather-brief",
   aiLimiter,
@@ -246,7 +313,7 @@ app.post(
         context,
       });
 
-      // Step 1: Check whether a valid cached brief exists.
+      // Check cached AI response
       const cachedBrief = getCachedBrief(cacheKey);
 
       if (cachedBrief) {
@@ -261,7 +328,7 @@ app.post(
         });
       }
 
-      // Step 2: Reuse an existing request for identical data.
+      // Deduplicate identical requests
       let pending = getPendingRequest(cacheKey);
 
       const deduplicated = Boolean(pending);
@@ -276,9 +343,6 @@ app.post(
 
         setPendingRequest(cacheKey, pending);
 
-        // Only the original request manages its pending entry.
-        // The rejection handler also prevents an unhandled rejection
-        // from the cleanup chain.
         void pending.then(
           () => clearPendingRequest(cacheKey),
           () => clearPendingRequest(cacheKey)
@@ -287,7 +351,6 @@ app.post(
         console.log(`[REQUEST DEDUPLICATED] ${context.city}`);
       }
 
-      // Step 3: Await either the original or shared request.
       const result = await pending;
 
       return res.status(200).json({
@@ -319,14 +382,19 @@ app.post(
   }
 );
 
+// Start server
 async function startServer() {
-  await connectDB();
+  try {
+    await connectDB();
 
-  app.listen(PORT, () => {
-    console.log(
-      `ShreySkyAI backend running on port ${PORT}`
-    );
-  });
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`ShreySkyAI backend running on port ${PORT}`);
+      console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
+    });
+  } catch (error) {
+    console.error("Failed to start ShreySkyAI backend:", error);
+    process.exit(1);
+  }
 }
 
 startServer();
